@@ -2,15 +2,15 @@
 #include "hardware/gpio.h"
 #include "hardware/uart.h"
 
-#define HC12_UART       uart0
+#define HC12_UART       uart1
 #define HC12_BAUD       9600
 
 // Your wiring:
 // HC-12 TX -> GP1
 // HC-12 RX -> GP0
 // So MCU transmits on GP0 and receives on GP1.
-#define HC12_TX_PIN     0
-#define HC12_RX_PIN     1
+#define HC12_TX_PIN     20
+#define HC12_RX_PIN     21
 
 void uart_tx_init(void) {
     uart_init(HC12_UART, HC12_BAUD);
