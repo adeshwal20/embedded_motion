@@ -9,8 +9,8 @@
 // HC-12 TX -> GP1
 // HC-12 RX -> GP0
 // So MCU transmits on GP0 and receives on GP1.
-#define HC12_TX_PIN     20
-#define HC12_RX_PIN     21
+#define HC12_TX_PIN     21
+#define HC12_RX_PIN     20
 
 void uart_tx_init(void) {
     uart_init(HC12_UART, HC12_BAUD);
