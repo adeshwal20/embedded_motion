@@ -1,47 +1,51 @@
 #include "gesture.h"
+#include <math.h>
 
-<<<<<<< HEAD
-#define ACC_X_THRESHOLD   1.0f
-#define ACC_Y_THRESHOLD   1.0f
-#define GYRO_Z_THRESHOLD  0.7f
-=======
-#define AX_THRESHOLD  1.8f
-#define AY_THRESHOLD  1.8f
->>>>>>> dbd89a8 (nothing' happening but communication)
+// Orientation-state mapping:
+// - Upright        -> STOP
+// - Flat           -> FORWARD
+// - Flat + twist   -> LEFT/RIGHT
+#define UPRIGHT_Z_RATIO_STOP   0.75f
+#define FLAT_Z_RATIO_ACTIVE    0.40f
+#define TWIST_GZ_THRESHOLD     0.22f
+
+static command_t s_last_cmd = CMD_STOP;
 
 command_t detect_gesture(const imu_tilt_t *tilt) {
     if (!tilt) {
         return CMD_STOP;
     }
 
-<<<<<<< HEAD
-    // Prioritize yaw/rotation gestures first.
-    if (tilt->gz > GYRO_Z_THRESHOLD) {
-        return CMD_RIGHT;
+    // Normalize attitude against gravity magnitude.
+    float g = sqrtf(tilt->ax * tilt->ax + tilt->ay * tilt->ay + tilt->az * tilt->az);
+    if (g < 1.0f) {
+        s_last_cmd = CMD_STOP;
+        return CMD_STOP;
     }
-    if (tilt->gz < -GYRO_Z_THRESHOLD) {
-        return CMD_LEFT;
+    float z_ratio = fabsf(tilt->az) / g; // near 1.0 upright, near 0.0 horizontal
+
+    if (z_ratio > UPRIGHT_Z_RATIO_STOP) {
+        s_last_cmd = CMD_STOP;
+        return CMD_STOP;
     }
 
-    // Then use tilt/acceleration for forward/backward.
-    if (tilt->ax > ACC_X_THRESHOLD) {
+    if (z_ratio < FLAT_Z_RATIO_ACTIVE) {
+        if (tilt->gz > TWIST_GZ_THRESHOLD) {
+            s_last_cmd = CMD_RIGHT;
+            return CMD_RIGHT;
+        }
+        if (tilt->gz < -TWIST_GZ_THRESHOLD) {
+            s_last_cmd = CMD_LEFT;
+            return CMD_LEFT;
+        }
+        s_last_cmd = CMD_FORWARD;
         return CMD_FORWARD;
     }
-    if (tilt->ax < -ACC_X_THRESHOLD) {
-        return CMD_BACKWARD;
-    }
-    if (tilt->ay > ACC_Y_THRESHOLD) {
-        return CMD_RIGHT;
-    }
-    if (tilt->ay < -ACC_Y_THRESHOLD) {
-        return CMD_LEFT;
-    }
-=======
-    if (tilt->ax > AX_THRESHOLD)  return CMD_FORWARD;
-    if (tilt->ax < -AX_THRESHOLD) return CMD_BACKWARD;
-    if (tilt->ay > AY_THRESHOLD)  return CMD_RIGHT;
-    if (tilt->ay < -AY_THRESHOLD) return CMD_LEFT;
->>>>>>> dbd89a8 (nothing' happening but communication)
 
+    // Transition band: keep last non-stop motion briefly for smoother control.
+    if (s_last_cmd != CMD_STOP) {
+        return s_last_cmd;
+    }
+    s_last_cmd = CMD_STOP;
     return CMD_STOP;
 }

@@ -7,12 +7,9 @@ typedef struct {
     float ax;
     float ay;
     float az;
-<<<<<<< HEAD
     float gx;
     float gy;
     float gz;
-=======
->>>>>>> dbd89a8 (nothing' happening but communication)
 } imu_tilt_t;
 
 bool imu_init(void);
