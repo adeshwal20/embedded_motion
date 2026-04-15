@@ -2,21 +2,39 @@
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
 #include "pico/stdlib.h"
+#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+<<<<<<< HEAD
+=======
+#include <stdbool.h>
+>>>>>>> dbd89a8 (nothing' happening but communication)
 
-#define IMU_I2C         i2c0
-#define IMU_BAUD        400000
+#define IMU_I2C                 i2c0
+#define IMU_BAUD                400000
 
-// Your actual wiring:
-#define IMU_SDA_PIN     24
-#define IMU_SCL_PIN     25
+#define IMU_SDA_PIN             24
+#define IMU_SCL_PIN             25
 
-// Common BNO08x I2C address when ADR is low.
-// If your board is strapped differently, this may need to be 0x4B.
-#define BNO085_ADDR     0x4A
+// Scanner showed your IMU at 0x4A
+#define BNO085_ADDR             0x4A
+
+// SHTP channels
+#define SHTP_CHAN_COMMAND       0
+#define SHTP_CHAN_EXECUTABLE    1
+#define SHTP_CHAN_CONTROL       2
+#define SHTP_CHAN_REPORTS       3
+#define SHTP_CHAN_WAKE_REPORTS  4
+#define SHTP_CHAN_GYRO          5
+
+// Commands / reports
+#define SHTP_REPORT_SET_FEATURE     0xFD
+#define SENSOR_REPORT_LINEAR_ACCEL  0x04
+
+#define MAX_PACKET_SIZE         512
 
 static bool imu_ready = false;
+<<<<<<< HEAD
 static uint8_t s_seq[6];
 static imu_tilt_t s_last;
 static bool s_fresh;
@@ -172,6 +190,103 @@ static void sh2_parse_reports(const uint8_t *p, uint16_t n) {
         // Unknown report: we don't know its length; bail out to avoid desync.
         return;
     }
+=======
+static uint8_t seq_nums[6] = {0};
+
+static int imu_i2c_read(uint8_t *dst, size_t len) {
+    return i2c_read_blocking(IMU_I2C, BNO085_ADDR, dst, len, false);
+}
+
+static int imu_i2c_write(const uint8_t *src, size_t len) {
+    return i2c_write_blocking(IMU_I2C, BNO085_ADDR, src, len, false);
+}
+
+static uint16_t read_u16_le(const uint8_t *p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static int16_t read_i16_le(const uint8_t *p) {
+    return (int16_t)read_u16_le(p);
+}
+
+static bool shtp_write_packet(uint8_t channel, const uint8_t *payload, uint16_t payload_len) {
+    uint8_t tx[MAX_PACKET_SIZE];
+    uint16_t total_len = payload_len + 4;
+
+    if (total_len > MAX_PACKET_SIZE) {
+        printf("write packet too large: %u\n", total_len);
+        return false;
+    }
+
+    tx[0] = (uint8_t)(total_len & 0xFF);
+    tx[1] = (uint8_t)((total_len >> 8) & 0x7F);
+    tx[2] = channel;
+    tx[3] = seq_nums[channel]++;
+
+    memcpy(&tx[4], payload, payload_len);
+
+    int ret = imu_i2c_write(tx, total_len);
+    if (ret != total_len) {
+        printf("write packet failed ret=%d expected=%u\n", ret, total_len);
+        return false;
+    }
+
+    return true;
+}
+
+static bool shtp_read_packet(uint8_t *buf, uint16_t *packet_len, uint8_t *channel) {
+    uint8_t header[4];
+    int ret = imu_i2c_read(header, 4);
+
+    if (ret != 4) {
+        printf("header read ret=%d\n", ret);
+        return false;
+    }
+
+    uint16_t len = (uint16_t)header[0] | ((uint16_t)header[1] << 8);
+    len &= 0x7FFF;
+
+    printf("raw header: %02X %02X %02X %02X len=%u\n",
+           header[0], header[1], header[2], header[3], len);
+
+    if (len < 4 || len > MAX_PACKET_SIZE) {
+        printf("bad len=%u\n", len);
+        return false;
+    }
+
+    buf[0] = header[0];
+    buf[1] = header[1];
+    buf[2] = header[2];
+    buf[3] = header[3];
+
+    if (len > 4) {
+        ret = imu_i2c_read(&buf[4], len - 4);
+        if (ret != (int)(len - 4)) {
+            printf("payload read ret=%d expected=%u\n", ret, len - 4);
+            return false;
+        }
+    }
+
+    *packet_len = len;
+    *channel = buf[2];
+    return true;
+}
+
+static bool bno_enable_linear_accel(uint32_t interval_us) {
+    uint8_t payload[17] = {0};
+
+    // Set Feature command
+    payload[0] = SHTP_REPORT_SET_FEATURE;
+    payload[1] = SENSOR_REPORT_LINEAR_ACCEL;
+
+    payload[5] = (uint8_t)(interval_us & 0xFF);
+    payload[6] = (uint8_t)((interval_us >> 8) & 0xFF);
+    payload[7] = (uint8_t)((interval_us >> 16) & 0xFF);
+    payload[8] = (uint8_t)((interval_us >> 24) & 0xFF);
+
+    printf("sending set feature for linear accel\n");
+    return shtp_write_packet(SHTP_CHAN_CONTROL, payload, sizeof(payload));
+>>>>>>> dbd89a8 (nothing' happening but communication)
 }
 
 bool imu_init(void) {
@@ -182,8 +297,9 @@ bool imu_init(void) {
     gpio_pull_up(IMU_SDA_PIN);
     gpio_pull_up(IMU_SCL_PIN);
 
-    sleep_ms(50);
+    sleep_ms(500);
 
+<<<<<<< HEAD
     memset(s_seq, 0, sizeof(s_seq));
     memset(&s_last, 0, sizeof(s_last));
     s_fresh = false;
@@ -202,6 +318,15 @@ bool imu_init(void) {
 
     imu_ready = true;
     return true;
+=======
+    bool ok = bno_enable_linear_accel(50000);
+    printf("enable linear accel: %s\n", ok ? "ok" : "failed");
+
+    sleep_ms(500);
+
+    imu_ready = ok;
+    return ok;
+>>>>>>> dbd89a8 (nothing' happening but communication)
 }
 
 bool imu_read_tilt(imu_tilt_t *out) {
@@ -209,6 +334,7 @@ bool imu_read_tilt(imu_tilt_t *out) {
         return false;
     }
 
+<<<<<<< HEAD
     // Poll a couple packets each call (no INT pin in this project yet).
     for (int k = 0; k < 2; k++) {
         uint8_t ch = 0;
@@ -226,4 +352,52 @@ bool imu_read_tilt(imu_tilt_t *out) {
     *out = s_last;
     s_fresh = false;
     return true;
+=======
+    uint8_t packet[MAX_PACKET_SIZE];
+    uint16_t len = 0;
+    uint8_t channel = 0;
+
+    for (int tries = 0; tries < 10; tries++) {
+        if (!shtp_read_packet(packet, &len, &channel)) {
+            printf("read packet failed\n");
+            continue;
+        }
+
+        printf("len=%u chan=%u", len, channel);
+
+        if (len > 4) {
+            printf(" payload:");
+            for (int i = 4; i < len && i < 12; i++) {
+                printf(" %02X", packet[i]);
+            }
+        }
+        printf("\n");
+
+        if (channel != SHTP_CHAN_REPORTS) {
+            continue;
+        }
+
+        if (len < 14) {
+            continue;
+        }
+
+        const uint8_t *p = &packet[4];
+
+        if (p[0] != SENSOR_REPORT_LINEAR_ACCEL) {
+            continue;
+        }
+
+        int16_t raw_x = read_i16_le(&p[4]);
+        int16_t raw_y = read_i16_le(&p[6]);
+        int16_t raw_z = read_i16_le(&p[8]);
+
+        out->ax = (float)raw_x / 256.0f;
+        out->ay = (float)raw_y / 256.0f;
+        out->az = (float)raw_z / 256.0f;
+
+        return true;
+    }
+
+    return false;
+>>>>>>> dbd89a8 (nothing' happening but communication)
 }
