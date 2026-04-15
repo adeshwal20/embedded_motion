@@ -6,6 +6,10 @@
 typedef struct {
     float ax;
     float ay;
+    float az;
+    float gx;
+    float gy;
+    float gz;
 } imu_tilt_t;
 
 // Initializes I2C and the BNO085 interface.
