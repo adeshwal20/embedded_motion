@@ -30,12 +30,8 @@ bool imu_init(void) {
 
     sleep_ms(100);
 
-    // Wake up MPU6050
-    uint8_t buf[2];
-    buf[0] = REG_PWR_MGMT_1;
-    buf[1] = 0x00;
-
-    int rc = i2c_write_blocking(IMU_I2C, MPU6050_ADDR, buf, 2, false);
+    uint8_t wake[2] = {REG_PWR_MGMT_1, 0x00};
+    int rc = i2c_write_blocking(IMU_I2C, MPU6050_ADDR, wake, 2, false);
     if (rc != 2) {
         imu_ready = false;
         return false;
@@ -72,9 +68,6 @@ bool imu_read(imu_data_t *out) {
     int16_t gy_raw = read16_be(&raw[10]);
     int16_t gz_raw = read16_be(&raw[12]);
 
-    // Default ranges:
-    // accel ±2g => 16384 LSB/g
-    // gyro ±250 deg/s => 131 LSB/(deg/s)
     out->ax = (float)ax_raw / 16384.0f;
     out->ay = (float)ay_raw / 16384.0f;
     out->az = (float)az_raw / 16384.0f;
