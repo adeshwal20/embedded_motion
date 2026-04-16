@@ -4,6 +4,6 @@
 #include "imu.h"
 #include "protocol.h"
 
-command_t detect_gesture(const imu_tilt_t *tilt);
+command_t detect_gesture(const imu_data_t *imu);
 
 #endif

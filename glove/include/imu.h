@@ -10,9 +10,9 @@ typedef struct {
     float gx;
     float gy;
     float gz;
-} imu_tilt_t;
+} imu_data_t;
 
 bool imu_init(void);
-bool imu_read_tilt(imu_tilt_t *out);
+bool imu_read(imu_data_t *out);
 
 #endif

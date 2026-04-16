@@ -1,87 +1,35 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "gesture.h"
-#include "imu.h"
-#include "protocol.h"
-#include "uart_tx.h"
+#include "hardware/i2c.h"
+#include "hardware/gpio.h"
 
-#define UART_ONLY_TEST_MODE 0
-#define IMU_RX_LINK_TEST_MODE 0
-
-static const char *command_to_string(command_t cmd) {
-    switch (cmd) {
-        case CMD_FORWARD:  return "FORWARD";
-        case CMD_LEFT:     return "LEFT";
-        case CMD_RIGHT:    return "RIGHT";
-        case CMD_STOP:
-        default:           return "STOP";
-    }
-}
+#define IMU_I2C     i2c0
+#define IMU_SDA_PIN 24
+#define IMU_SCL_PIN 25
 
 int main(void) {
     stdio_init_all();
-    sleep_ms(1500);
-    printf("glove booted\n");
+    sleep_ms(3000);
+    printf("mpu scan start\r\n");
 
-    uart_tx_init();
-    imu_init();
+    i2c_init(IMU_I2C, 400000);
+    gpio_set_function(IMU_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(IMU_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(IMU_SDA_PIN);
+    gpio_pull_up(IMU_SCL_PIN);
 
-    command_t last_sent = CMD_STOP;
-    absolute_time_t last_imu_rx = get_absolute_time();
-    absolute_time_t last_tx = get_absolute_time();
-    absolute_time_t last_log = get_absolute_time();
-
-    while (true) {
-#if UART_ONLY_TEST_MODE
-        command_t cmd = CMD_LEFT;
-        if (absolute_time_diff_us(last_tx, get_absolute_time()) > 100000) {
-            uart_send_command(cmd);
-            last_sent = cmd;
-            last_tx = get_absolute_time();
-        }
-        if (absolute_time_diff_us(last_log, get_absolute_time()) > 250000) {
-            printf("uart-only test: sending %s\n", command_to_string(cmd));
-            last_log = get_absolute_time();
-        }
-        sleep_ms(10);
-        continue;
-#endif
-        imu_tilt_t tilt;
-        if (imu_read_tilt(&tilt)) {
-            last_imu_rx = get_absolute_time();
-#if IMU_RX_LINK_TEST_MODE
-            // Diagnostic: prove IMU packets are arriving by forcing a turn command.
-            command_t cmd = CMD_LEFT;
-#else
-            command_t cmd = detect_gesture(&tilt);
-#endif
-
-            if (absolute_time_diff_us(last_log, get_absolute_time()) > 100000) {
-                printf("imu ax=%.2f ay=%.2f az=%.2f gx=%.2f gy=%.2f gz=%.2f cmd=%s\n",
-                       tilt.ax, tilt.ay, tilt.az, tilt.gx, tilt.gy, tilt.gz,
-                       command_to_string(cmd));
-                last_log = get_absolute_time();
-            }
-
-            // Send on change, and periodically re-send as link keepalive.
-            if (cmd != last_sent ||
-                absolute_time_diff_us(last_tx, get_absolute_time()) > 100000) {
-                uart_send_command(cmd);
-                last_sent = cmd;
-                last_tx = get_absolute_time();
-            }
-        } else if (absolute_time_diff_us(last_imu_rx, get_absolute_time()) > 200000) {
-            if (last_sent != CMD_STOP) {
-                uart_send_command(CMD_STOP);
-                last_sent = CMD_STOP;
-                last_tx = get_absolute_time();
-            }
-            if (absolute_time_diff_us(last_log, get_absolute_time()) > 250000) {
-                printf("imu read timeout\n");
-                last_log = get_absolute_time();
+    while (1) {
+        int found = 0;
+        for (int addr = 0x08; addr < 0x78; addr++) {
+            int rc = i2c_write_blocking(IMU_I2C, addr, NULL, 0, false);
+            if (rc >= 0) {
+                printf("found 0x%02X\r\n", addr);
+                found = 1;
             }
         }
-
-        sleep_ms(10);
+        if (!found) {
+            printf("no device found\r\n");
+        }
+        sleep_ms(2000);
     }
 }
