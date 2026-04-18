@@ -6,6 +6,8 @@ void motor_init(void);
 void drive_all(float left_percent, float right_percent);
 /** Same speed both drivers — use for straight line (see MOTOR_DRIVER2_SWAP_DIRECTION in motor.c). */
 void drive_forward(float speed_percent);
+/** Straight reverse (negative speed both sides). */
+void drive_backward(float speed_percent);
 /** Bench: one driver at speed; other off. Indices 0,1 = driver 1; 2,3 = driver 2. */
 void drive_single_motor(unsigned motor_index, float speed_percent);
 void drive_motor1_channel_a(float speed_percent);

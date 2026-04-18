@@ -28,7 +28,7 @@ void uart_rx_init(void) {
     uart_set_fifo_enabled(HC12B_UART, true);
 }
 
-bool uart_receive_command(command_t *out) {
+bool uart_receive_command(command_t *out, unsigned *which_uart) {
     if (!out) {
         return false;
     }
@@ -36,11 +36,17 @@ bool uart_receive_command(command_t *out) {
     if (uart_is_readable(HC12A_UART)) {
         uint8_t b = (uint8_t)uart_getc(HC12A_UART);
         *out = byte_to_command(b);
+        if (which_uart) {
+            *which_uart = 0U;
+        }
         return true;
     }
     if (uart_is_readable(HC12B_UART)) {
         uint8_t b = (uint8_t)uart_getc(HC12B_UART);
         *out = byte_to_command(b);
+        if (which_uart) {
+            *which_uart = 1U;
+        }
         return true;
     }
     return false;

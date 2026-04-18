@@ -7,7 +7,9 @@
 #define TURN_SPEED       30.0f
 #define COMMAND_TIMEOUT_MS 300
 #define MOTOR_ONLY_TEST_MODE 0
-#define CAR_UART_DEBUG_LOG 0
+#define MOTOR_WIRING_TEST_MODE 0
+// 1 = USB serial logs: every RX byte (which UART), active command, heartbeat.
+#define CAR_UART_DEBUG_LOG 1
 
 #if CAR_UART_DEBUG_LOG
 static const char *cmd_str(command_t c) {
@@ -29,7 +31,23 @@ int main(void) {
     uart_rx_init();
 #endif
 
-#if MOTOR_ONLY_TEST_MODE
+#if MOTOR_WIRING_TEST_MODE
+    // Step-by-step motor sanity test to validate wiring and polarity.
+    while (true) {
+        drive_all(35.0f, 0.0f);   // left side only
+        sleep_ms(1500);
+        drive_all(0.0f, 35.0f);   // right side only
+        sleep_ms(1500);
+        drive_all(35.0f, 35.0f);  // both forward
+        sleep_ms(1500);
+        drive_all(-30.0f, 30.0f); // left turn
+        sleep_ms(1200);
+        drive_all(30.0f, -30.0f); // right turn
+        sleep_ms(1200);
+        motor_stop_all();
+        sleep_ms(1000);
+    }
+#elif MOTOR_ONLY_TEST_MODE
     while (true) {
         drive_forward(DRIVE_SPEED);
         sleep_ms(10);
@@ -45,11 +63,20 @@ int main(void) {
 
     while (true) {
         command_t cmd;
-        if (uart_receive_command(&cmd)) {
+#if CAR_UART_DEBUG_LOG
+        unsigned rx_uart;
+        if (uart_receive_command(&cmd, &rx_uart))
+#else
+        if (uart_receive_command(&cmd, NULL))
+#endif
+        {
             last_cmd = cmd;
             last_rx_time = get_absolute_time();
 #if CAR_UART_DEBUG_LOG
-            printf("RX cmd=%s (%u)\n", cmd_str(cmd), (unsigned)cmd);
+            printf("RX uart%u GPIO %s cmd=%s byte=%u\n",
+                   rx_uart,
+                   rx_uart ? "20/21" : "0/1",
+                   cmd_str(cmd), (unsigned)cmd);
 #endif
         }
 
@@ -78,7 +105,7 @@ int main(void) {
                 drive_forward(DRIVE_SPEED);
                 break;
             case CMD_BACKWARD:
-                motor_stop_all();
+                drive_backward(DRIVE_SPEED);
                 break;
             case CMD_LEFT:
                 // Left turn: left wheels CCW, right wheels CW

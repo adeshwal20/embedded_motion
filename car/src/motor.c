@@ -147,6 +147,10 @@ void drive_forward(float speed_percent) {
     drive_all(speed_percent, speed_percent);
 }
 
+void drive_backward(float speed_percent) {
+    drive_all(-speed_percent, -speed_percent);
+}
+
 void drive_single_motor(unsigned motor_index, float speed_percent) {
     if (speed_percent > 100.0f) {
         speed_percent = 100.0f;

@@ -4,42 +4,73 @@
 #include "pico/stdlib.h"
 #include <stdint.h>
 
-#define IMU_I2C         i2c0
-#define IMU_SDA_PIN     24
-#define IMU_SCL_PIN     25
-#define IMU_BAUD        400000
+#define IMU_BAUD            100000
+#define IMU_I2C_TIMEOUT_US  10000
 
-#define MPU6050_ADDR    0x68
+#define MPU6050_ADDR_A      0x68
+#define MPU6050_ADDR_B      0x69
 
-#define REG_PWR_MGMT_1  0x6B
-#define REG_ACCEL_XOUT  0x3B
+#define REG_PWR_MGMT_1      0x6B
+#define REG_ACCEL_XOUT      0x3B
 
+typedef struct {
+    i2c_inst_t *bus;
+    uint sda;
+    uint scl;
+} imu_bus_cfg_t;
+
+static const imu_bus_cfg_t k_bus_candidates[] = {
+    {i2c1, 26u, 27u}, // preferred wiring
+    {i2c0, 24u, 25u}, // legacy wiring fallback
+};
+
+static i2c_inst_t *s_bus = i2c1;
+static uint8_t s_addr = MPU6050_ADDR_A;
 static bool imu_ready = false;
 
 static int16_t read16_be(const uint8_t *p) {
     return (int16_t)((p[0] << 8) | p[1]);
 }
 
-bool imu_init(void) {
-    i2c_init(IMU_I2C, IMU_BAUD);
+static void setup_bus(const imu_bus_cfg_t *cfg) {
+    i2c_init(cfg->bus, IMU_BAUD);
+    gpio_set_function(cfg->sda, GPIO_FUNC_I2C);
+    gpio_set_function(cfg->scl, GPIO_FUNC_I2C);
+    gpio_pull_up(cfg->sda);
+    gpio_pull_up(cfg->scl);
+    sleep_ms(20);
+}
 
-    gpio_set_function(IMU_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_set_function(IMU_SCL_PIN, GPIO_FUNC_I2C);
-    gpio_pull_up(IMU_SDA_PIN);
-    gpio_pull_up(IMU_SCL_PIN);
-
-    sleep_ms(100);
-
+static bool try_wake_mpu(i2c_inst_t *bus, uint8_t addr) {
     uint8_t wake[2] = {REG_PWR_MGMT_1, 0x00};
-    int rc = i2c_write_blocking(IMU_I2C, MPU6050_ADDR, wake, 2, false);
-    if (rc != 2) {
-        imu_ready = false;
-        return false;
+    int rc = i2c_write_timeout_us(bus, addr, wake, 2, false, IMU_I2C_TIMEOUT_US);
+    return rc == 2;
+}
+
+bool imu_init(void) {
+    imu_ready = false;
+
+    for (size_t i = 0; i < (sizeof(k_bus_candidates) / sizeof(k_bus_candidates[0])); ++i) {
+        const imu_bus_cfg_t *cfg = &k_bus_candidates[i];
+        setup_bus(cfg);
+
+        if (try_wake_mpu(cfg->bus, MPU6050_ADDR_A)) {
+            s_bus = cfg->bus;
+            s_addr = MPU6050_ADDR_A;
+            imu_ready = true;
+            sleep_ms(50);
+            return true;
+        }
+        if (try_wake_mpu(cfg->bus, MPU6050_ADDR_B)) {
+            s_bus = cfg->bus;
+            s_addr = MPU6050_ADDR_B;
+            imu_ready = true;
+            sleep_ms(50);
+            return true;
+        }
     }
 
-    sleep_ms(100);
-    imu_ready = true;
-    return true;
+    return false;
 }
 
 bool imu_read(imu_data_t *out) {
@@ -50,12 +81,12 @@ bool imu_read(imu_data_t *out) {
     uint8_t reg = REG_ACCEL_XOUT;
     uint8_t raw[14];
 
-    int rc = i2c_write_blocking(IMU_I2C, MPU6050_ADDR, &reg, 1, true);
+    int rc = i2c_write_timeout_us(s_bus, s_addr, &reg, 1, true, IMU_I2C_TIMEOUT_US);
     if (rc != 1) {
         return false;
     }
 
-    rc = i2c_read_blocking(IMU_I2C, MPU6050_ADDR, raw, 14, false);
+    rc = i2c_read_timeout_us(s_bus, s_addr, raw, 14, false, IMU_I2C_TIMEOUT_US);
     if (rc != 14) {
         return false;
     }

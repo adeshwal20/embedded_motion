@@ -3,12 +3,10 @@
 #include "hardware/uart.h"
 
 #define HC12_BAUD       9600
-// Diagnostic mode: broadcast on both common UART routes.
-// Route A: uart0 on GPIO0/1
+// Must match car/src/uart_rx.c: car listens on uart0 @ 0/1 and uart1 @ 20/21.
 #define HC12A_UART       uart0
 #define HC12A_TX_PIN     0
 #define HC12A_RX_PIN     1
-// Route B: uart1 on GPIO20/21
 #define HC12B_UART       uart1
 #define HC12B_TX_PIN     20
 #define HC12B_RX_PIN     21
