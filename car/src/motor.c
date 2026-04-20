@@ -13,7 +13,21 @@
 //
 // If the car spins in place with drive_all(70,70), one side is wired opposite: set
 // MOTOR_DRIVER2_SWAP_DIRECTION to 0 and use 1 for driver 1 instead (or vice versa).
+#ifndef MOTOR_DRIVER2_SWAP_DIRECTION
 #define MOTOR_DRIVER2_SWAP_DIRECTION 1
+#endif
+/* Match driver 2: set 1 if left TB6612 channel needs inverted IN1/IN2 vs the default below. */
+#ifndef MOTOR_DRIVER1_SWAP_DIRECTION
+#define MOTOR_DRIVER1_SWAP_DIRECTION 0
+#endif
+/*
+ * If your *physical* left wheels are wired to the MCU nets we call driver 2 (GPIO 35/36/37)
+ * and the right side to driver 1 (GPIO 12/10/11), set to 1. Motor wiring test “left only”
+ * will then energize the driver that firmware calls “right” — use that to confirm harness.
+ */
+#ifndef MOTOR_SWAP_LEFT_RIGHT
+#define MOTOR_SWAP_LEFT_RIGHT 0
+#endif
 
 #define SOFT_PWM_TICK_US   50u
 #define SOFT_PWM_PHASES    20u
@@ -28,15 +42,15 @@
 #define BIN2_1          11
 
 // ---------------- Driver 2 -------------------------------------------------
-#define PWMA2           29
-#define PWMB2           29
+#define PWMA2           35
+#define PWMB2           35
 
-#define AIN1_2          30
-#define BIN1_2          30
-#define AIN2_2          31
-#define BIN2_2          31
+#define AIN1_2          36
+#define BIN1_2          36
+#define AIN2_2          37
+#define BIN2_2          37
 
-/* One soft-PWM level per physical PWM pin: GPIO 12 (driver 1), GPIO 29 (driver 2). */
+/* One soft-PWM level per physical PWM pin: GPIO 12 (driver 1), GPIO 35 (driver 2). */
 static volatile uint8_t s_soft_duty[2];
 static repeating_timer_t s_pwm_timer;
 
@@ -113,8 +127,8 @@ void motor_init(void) {
 
     init_output(10);
     init_output(11);
-    init_output(30);
-    init_output(31);
+    init_output(36);
+    init_output(37);
 
     init_output(PWMA1);
     init_output(PWMA2);
@@ -138,12 +152,21 @@ void drive_all(float left_percent, float right_percent) {
         right_percent = -100.0f;
     }
 
-    set_one_motor(PWMA1, AIN1_1, AIN2_1, left_percent, false);
+#if MOTOR_SWAP_LEFT_RIGHT
+    set_one_motor(PWMA1, AIN1_1, AIN2_1, right_percent,
+                  MOTOR_DRIVER1_SWAP_DIRECTION != 0);
+    set_one_motor(PWMA2, AIN1_2, AIN2_2, left_percent,
+                  MOTOR_DRIVER2_SWAP_DIRECTION != 0);
+#else
+    set_one_motor(PWMA1, AIN1_1, AIN2_1, left_percent,
+                  MOTOR_DRIVER1_SWAP_DIRECTION != 0);
     set_one_motor(PWMA2, AIN1_2, AIN2_2, right_percent,
                   MOTOR_DRIVER2_SWAP_DIRECTION != 0);
+#endif
 }
 
 void drive_forward(float speed_percent) {
+    /* Same as drive_all(s, s): both drivers, all four wheels. */
     drive_all(speed_percent, speed_percent);
 }
 
@@ -162,7 +185,8 @@ void drive_single_motor(unsigned motor_index, float speed_percent) {
     float z = 0.0f;
     /* 0,1 -> driver 1; 2,3 -> driver 2 (A/B indices alias when wired together). */
     set_one_motor(PWMA1, AIN1_1, AIN2_1,
-                  (motor_index == 0u || motor_index == 1u) ? speed_percent : z, false);
+                  (motor_index == 0u || motor_index == 1u) ? speed_percent : z,
+                  MOTOR_DRIVER1_SWAP_DIRECTION != 0);
     set_one_motor(PWMA2, AIN1_2, AIN2_2,
                   (motor_index == 2u || motor_index == 3u) ? speed_percent : z,
                   MOTOR_DRIVER2_SWAP_DIRECTION != 0);

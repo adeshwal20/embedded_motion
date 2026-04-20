@@ -2,11 +2,14 @@
 #define MOTOR_H
 
 void motor_init(void);
-/** Driver 1 = left_percent, driver 2 = right_percent (shared A/B nets per chip). */
+/**
+ * Left = driver 1 (GPIO 12/10/11), right = driver 2 (GPIO 35/36/37). Each TB6612 runs two motors (A+B tied);
+ * so non-zero left and right together spins all four wheels (skid-steer).
+ */
 void drive_all(float left_percent, float right_percent);
-/** Same speed both drivers — use for straight line (see MOTOR_DRIVER2_SWAP_DIRECTION in motor.c). */
+/** Straight line: both drivers at same speed → all four wheels forward. */
 void drive_forward(float speed_percent);
-/** Straight reverse (negative speed both sides). */
+/** Straight line: all four wheels reverse. */
 void drive_backward(float speed_percent);
 /** Bench: one driver at speed; other off. Indices 0,1 = driver 1; 2,3 = driver 2. */
 void drive_single_motor(unsigned motor_index, float speed_percent);
