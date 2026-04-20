@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
+#include "dac.h"
 #include "motor.h"
 #include "uart_rx.h"
 
@@ -17,6 +18,46 @@
 /* Marginal HC-12 links need slack; glove also retransmits on this scale. */
 #define COMMAND_TIMEOUT_MS 800
 #endif
+
+/* DAC buzzer beep state (non-blocking): short pulse when the car transitions to STOP. */
+#define BUZZER_BEEP_MS 100
+typedef struct {
+    bool active;
+    absolute_time_t off_at;
+} buzzer_state_t;
+
+static buzzer_state_t s_buzzer;
+
+static void buzzer_trigger_beep(void) {
+    dac_buzzer_set(true);
+    s_buzzer.active = true;
+    s_buzzer.off_at = make_timeout_time_ms(BUZZER_BEEP_MS);
+}
+
+/* Force-silence the buzzer right now (called when a MOVE command arrives so the
+ * amp stops drawing current and can't sag the motor supply). */
+static void buzzer_silence(void) {
+    if (s_buzzer.active) {
+        dac_buzzer_set(false);
+        s_buzzer.active = false;
+    }
+}
+
+static void buzzer_poll(void) {
+    if (!s_buzzer.active) {
+        return;
+    }
+    if (absolute_time_diff_us(get_absolute_time(), s_buzzer.off_at) <= 0) {
+        dac_buzzer_set(false);
+        s_buzzer.active = false;
+    }
+}
+
+/* True if c is a moving command (anything except STOP). */
+static bool cmd_is_moving(command_t c) {
+    return (c == CMD_FORWARD) || (c == CMD_BACKWARD) ||
+           (c == CMD_LEFT)    || (c == CMD_RIGHT);
+}
 #ifndef MOTOR_ONLY_TEST_MODE
 #define MOTOR_ONLY_TEST_MODE 0
 #endif
@@ -109,6 +150,7 @@ static const char *cmd_str(command_t c) {
 int main(void) {
 #if RUN_MOTOR_SMOKE_TEST
     motor_init();
+    dac_init();
     while (true) {
         /* Lower % on purpose for bench test if a motor is weak. */
         drive_all(30.0f, 30.0f);
@@ -124,6 +166,7 @@ int main(void) {
 #endif
     status_led_init();
     motor_init();
+    dac_init();
 #if !MOTOR_ONLY_TEST_MODE
     uart_rx_init();
 #endif
@@ -190,6 +233,16 @@ int main(void) {
 #if CAR_UART_DEBUG_LOG
             printf("ACT cmd=%s\n", cmd_str(last_cmd));
 #endif
+            /* Beep only on transition into STOP from any moving command. Turns or
+             * speed changes between FORWARD/LEFT/RIGHT/BACKWARD do NOT beep. */
+            if (last_cmd == CMD_STOP && cmd_is_moving(last_printed)) {
+                buzzer_trigger_beep();
+            }
+            /* If the car is starting to move again, kill the buzzer instantly so the
+             * amp can't load the supply and fight the motors. */
+            if (cmd_is_moving(last_cmd)) {
+                buzzer_silence();
+            }
             last_printed = last_cmd;
         }
 
@@ -222,6 +275,7 @@ int main(void) {
         }
 
         status_led_tick(last_cmd);
+        buzzer_poll();
         sleep_ms(5);
     }
 #endif
